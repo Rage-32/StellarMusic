@@ -19,7 +19,7 @@ public static class Program
     {
         Discord = new DiscordClient(new DiscordConfiguration()
         {
-            Token = "MTExNTE3NTI5NTk5NDA0MDM1MA.GMTLzm.2ASPl7kogSYvvGEnCZ6hzqN-nzHt0rq8KcCabo",
+            Token = "",
             TokenType = TokenType.Bot,
             Intents = DiscordIntents.All,
             LogUnknownEvents = false,
