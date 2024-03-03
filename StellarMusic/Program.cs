@@ -1,25 +1,29 @@
 ﻿using DSharpPlus;
-using DSharpPlus.EventArgs;
 using DSharpPlus.Lavalink;
 using DSharpPlus.Net;
 using DSharpPlus.SlashCommands;
 using Microsoft.Extensions.Logging;
 using StellarMusic.Commands;
+using StellarMusic.Events;
+using StellarMusic.Events.LavaLink;
 
 namespace StellarMusic;
 
 public static class Program
 {
     public static DiscordClient Discord;
+    
     public static void Main()
     {
+        Config.Config.Initialize();
         MainAsync().GetAwaiter().GetResult();
     }
+    
     private static async Task MainAsync()
     {
-        Discord = new DiscordClient(new DiscordConfiguration()
+        Discord = new DiscordClient(new DiscordConfiguration
         {
-            Token = "",
+            Token = Config.Config.Current.Token ?? "",
             TokenType = TokenType.Bot,
             Intents = DiscordIntents.All,
             LogUnknownEvents = false,
@@ -28,30 +32,34 @@ public static class Program
 
         var endpoint = new ConnectionEndpoint
         {
-            Hostname = "127.0.0.1",
-            Port = 3000
+            Hostname = Config.Config.Current.EndpointHost ?? "",
+            Port = Config.Config.Current.EndpointPort ?? 0
         };
 
-        var lavalinkConfig = new LavalinkConfiguration
+        var lavaLinkConfig = new LavalinkConfiguration
         {
-            Password = "iloverage32",
+            Password = Config.Config.Current.LavaLinkPassword ?? "",
             RestEndpoint = endpoint,
             SocketEndpoint = endpoint
         };
 
-        Discord.Ready += DiscordOnReady;
+        Discord.SessionCreated += SessionCreated.DiscordOnSessionCreated;
+        Discord.GuildCreated += GuildCreated.DiscordOnGuildCreated;
+        Discord.GuildDeleted += GuildDeleted.DiscordOnGuildDeleted;
+        
         var slash = Discord.UseSlashCommands();
         slash.RegisterCommands<MusicCommands>();
-        var lavalink = Discord.UseLavalink();
+
+        slash.SlashCommandInvoked += CommandRan.SlashOnSlashCommandInvoked;
+        slash.SlashCommandExecuted += CommandRan.SlashOnSlashCommandExecuted;
+        
+        var lavaLink = Discord.UseLavalink();
 
         await Discord.ConnectAsync();
-        await lavalink.ConnectAsync(lavalinkConfig);
+        await lavaLink.ConnectAsync(lavaLinkConfig);
+        
+        lavaLink.ConnectedNodes[endpoint].PlaybackFinished += PlaybackFinished.OnPlaybackFinished;
         
         await Task.Delay(-1);
-    }
-
-    private static async Task DiscordOnReady(DiscordClient sender, ReadyEventArgs args)
-    {
-        Console.WriteLine("Started. Logged in as " + sender.CurrentUser.Username + "#" + sender.CurrentUser.Discriminator + " (" + sender.CurrentUser.Id + ")");
     }
 }
