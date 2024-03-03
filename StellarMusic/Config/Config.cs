@@ -4,7 +4,7 @@ namespace StellarMusic.Config;
 
 public class Config
 {
-    public static Models.Config Current { get; private set; }
+    public static Models.Config Current { get; private set; } = new();
     
     public void Save()
     {
@@ -20,7 +20,15 @@ public class Config
 
         if (!File.Exists(path))
         {
-            throw new FileNotFoundException("Could not find config file!");
+            try
+            {
+                var json2 = JsonConvert.SerializeObject(Current, Formatting.Indented);
+                File.WriteAllText(path, json2);
+            }
+            catch (Exception e)
+            {
+                throw new FileNotFoundException("Could not find config file and failed to create one!");
+            }
         }
 
         var json = File.ReadAllText(path);

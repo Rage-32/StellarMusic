@@ -1,5 +1,8 @@
 using DSharpPlus;
 using DSharpPlus.Entities;
+using DSharpPlus.Interactivity;
+using DSharpPlus.Interactivity.Enums;
+using DSharpPlus.Interactivity.Extensions;
 using DSharpPlus.Lavalink;
 using DSharpPlus.SlashCommands;
 using Microsoft.Extensions.Logging;
@@ -10,7 +13,49 @@ namespace StellarMusic.Commands;
 
 public class MusicCommands : ApplicationCommandModule
 {
-    public static Dictionary<DiscordGuild, List<Track>> ServerQueue = new();
+    public static Dictionary<DiscordGuild, List<Track>> ServerQueue = new(); // move this somewhere else
+
+    [SlashCommandGroup("bassboost", "Bassboost commands")]
+    public class BassBoostSubCommands : ApplicationCommandModule
+    {
+        [SlashCommand("set", "Set bass boost")]
+        public async Task BassBoostCommand(InteractionContext ctx, [Option("bassboost", "Set the level of bass boost")] string level)
+        {
+            await ctx.CheckLinkValid(ctx.Client);
+        
+            var lava = ctx.Client.GetLavalink();
+            var node = lava.ConnectedNodes.Values.First();
+            var conn = node.GetGuildConnection(ctx.Guild);
+    
+            if (!float.TryParse(level, out var levels))
+            {
+                await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 Invalid bass boost level. Level must be between 0 and 0.9. (Use decimals)").WithColor(new DiscordColor(0xdd2e44)));
+                return;
+            }
+            
+            if (levels > 0.9 || levels < 0)
+            {
+                await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 Bass boost level must be between 0 and 0.9. (Use decimals)").WithColor(new DiscordColor(0xdd2e44)));
+                return;
+            }
+    
+            await conn.AdjustEqualizerAsync(new LavalinkBandAdjustment(1, levels));
+            await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription($"🔊 Bass boost is now set to `{levels}f`!").WithColor(new DiscordColor(0xa388cd)));
+        }
+        
+        [SlashCommand("reset", "Reset the bass boost")]
+        public async Task ResetBassBoostCommand(InteractionContext ctx)
+        {
+            await ctx.CheckLinkValid(ctx.Client);
+        
+            var lava = ctx.Client.GetLavalink();
+            var node = lava.ConnectedNodes.Values.First();
+            var conn = node.GetGuildConnection(ctx.Guild);
+    
+            await conn.ResetEqualizerAsync();
+            await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🟣 Successfully reset the equalizer!").WithColor(new DiscordColor(0xa388cd)));
+        }
+    }
 
     [SlashCommandGroup("queue", "Queue commands")]
     public class QueueSubCommands : ApplicationCommandModule
@@ -18,27 +63,52 @@ public class MusicCommands : ApplicationCommandModule
         [SlashCommand("get", "Get the current queue")]
         public async Task QueueGetCommand(InteractionContext ctx)
         {
-            await ctx.CheckLinkValid(ctx.Client);
-        
-            if (!ServerQueue.ContainsKey(ctx.Guild) || ServerQueue[ctx.Guild].Count < 1)
+            try
             {
-                await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 There are no tracks in the queue.").WithColor(new DiscordColor(0xdd2e44)));
-                return;
+                await ctx.CheckLinkValid(ctx.Client);
+        
+                if (!ServerQueue.ContainsKey(ctx.Guild) || ServerQueue[ctx.Guild].Count < 1)
+                {
+                    await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 There are no tracks in the queue.").WithColor(new DiscordColor(0xdd2e44)));
+                    return;
+                }
+
+                await ctx.DeferAsync();
+            
+                var queue = ServerQueue[ctx.Guild];
+
+                var pageSize = Config.Config.Current.GetQueuePageLimit;
+
+                var pages = new List<Page>();
+                var pageCount = (int)Math.Ceiling(queue.Count / (double)pageSize);
+            
+                for (var i = 0; i < pageCount; i++)
+                {
+                    var tracks = queue.Skip(i * pageSize).Take(pageSize).ToList();
+                    var page = new Page
+                    {
+                        Embed = new DiscordEmbedBuilder
+                        {
+                            Color = new DiscordColor(0xa388cd),
+                            Description = string.Join("\n", tracks.Select((track, index) => $"▶ #{i * pageSize + index + 1}: [{track.GetTrack.Title}]({track.GetTrack.Uri}) [{ctx.Guild.GetMemberAsync(track.RequestedBy).Result.Username}]"))
+                        }
+                    };
+                    pages.Add(page);
+                }
+            
+                await ctx.Interaction.SendPaginatedResponseAsync(false, ctx.User, pages, asEditResponse: true, deletion: ButtonPaginationBehavior.Disable);
             }
-
-            var queueString = ServerQueue[ctx.Guild].ToList().Aggregate("", (current, track) => current + $"{(track.Repeat ? "[Repeat]" : "") } #{ServerQueue[ctx.Guild].IndexOf(track) + 1}: [{track.GetTrack.Title}]({track.GetTrack.Uri})\n");
-
-            await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription(queueString.Length < 1 ? "🔴 There are no tracks in the queue." : queueString).WithColor(new DiscordColor(0xa388cd)));
+            catch (Exception e)
+            {
+                await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 Failed to load the current queue.").WithColor(new DiscordColor(0xdd2e44)));
+                ctx.Client.Logger.LogError(e, "Failed to load the current queue");
+            }
         }
         
-        [SlashCommand("clear", "Clear")]
+        [SlashCommand("clear", "Clear the current queue.")]
         public async Task QueueClearCommand(InteractionContext ctx)
         {
             await ctx.CheckLinkValid(ctx.Client);
-                
-            var lava = ctx.Client.GetLavalink();
-            var node = lava.ConnectedNodes.Values.First();
-            var conn = node.GetGuildConnection(ctx.Member.VoiceState.Channel.Guild);
             
             if (!ServerQueue.ContainsKey(ctx.Guild))
             {
@@ -106,16 +176,16 @@ public class MusicCommands : ApplicationCommandModule
             await conn.StopAsync();
             await Task.Delay(1000);
             var track = conn.CurrentState.CurrentTrack;
-            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(new DiscordEmbedBuilder()
+            await ctx.EditAsync(new DiscordEmbedBuilder()
                 .WithDescription($"🎵 Now playing [{track.Title}]({track.Uri})")
                 .WithColor(new DiscordColor(0x7289da))
-                .WithThumbnail(conn.CurrentState.CurrentTrack.Uri.GetTrackThumbnail())));
+                .WithThumbnail(conn.CurrentState.CurrentTrack.Uri.GetTrackThumbnail()));
         }
         else
         {
-            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(new DiscordEmbedBuilder()
+            await ctx.EditAsync(new DiscordEmbedBuilder()
                 .WithDescription("🔴 There are no more tracks in the queue. Use `/stop` to stop the player.")
-                .WithColor(new DiscordColor(0xdd2e44))));
+                .WithColor(new DiscordColor(0xdd2e44)));
         }
     }
 
@@ -131,7 +201,11 @@ public class MusicCommands : ApplicationCommandModule
             var conn = node.GetGuildConnection(ctx.Member.VoiceState.Channel.Guild);
 
             var track = conn.CurrentState.CurrentTrack;
-            await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription($"▶ Currently playing: [{track.Title}]({track.Uri})").WithColor(new DiscordColor(0xa388cd)).WithFooter($"{track.Author}").WithTimestamp(DateTime.Now));
+            await ctx.RespondAsync(new DiscordEmbedBuilder()
+                .WithDescription($"▶ Currently playing: [{track.Title}]({track.Uri})")
+                .WithColor(new DiscordColor(0xa388cd))
+                .WithFooter($"{track.Author}")
+                .WithTimestamp(DateTime.Now));
         }
         catch
         {
@@ -154,15 +228,17 @@ public class MusicCommands : ApplicationCommandModule
             await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription($"🔴 `{volumeString}` is not a valid volume level.").WithColor(new DiscordColor(0xdd2e44)), true);
             return;
         }
-
-        if (volume is > 150 or < 0)
+        
+        if (volume is > 100 or < 0)
         {
-            await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 Volume cannot be higher than 150 or lower than 0.").WithColor(new DiscordColor(0xdd2e44)), true);
+            await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription($"🔴 Volume cannot be higher than 100 or lower than 0.").WithColor(new DiscordColor(0xdd2e44)), true);
             return;
         }
 
         await conn.SetVolumeAsync(volume);
-        await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription($"{(volume >= 75 ? "🔊" : volume >= 9 ? "🔉" : volume >= 1 ? "🔈" : volume == 0 ? "🔇" : "🔇")} {(volume == 0 ? "Successfully muted the player" : $"Set the players volume to `{volume}%`")}.").WithColor(new DiscordColor(0xa388cd)));
+        await ctx.RespondAsync(new DiscordEmbedBuilder()
+            .WithDescription($"{(volume >= 75 ? "🔊" : volume >= 9 ? "🔉" : volume >= 1 ? "🔈" : volume == 0 ? "🔇" : "🔇")} {(volume == 0 ? "Successfully muted the player" : $"Set the players volume to `{volume}%`")}.")
+            .WithColor(new DiscordColor(0xa388cd)));
     }
     
     [SlashCommand("pause", "Pause the current song on the player.")]
@@ -194,6 +270,8 @@ public class MusicCommands : ApplicationCommandModule
     [SlashCommand("play", "Play a song by name or URL.")]
     public async Task PlayCommand(InteractionContext ctx, [Option("song", "songURL")] string songUrl)
     {
+        await ctx.DeferAsync();
+        
         try
         {
             var lava = ctx.Client.GetLavalink();
@@ -201,7 +279,7 @@ public class MusicCommands : ApplicationCommandModule
             
             if (ctx.Member.VoiceState is null || ctx.Member.VoiceState.Channel is null || ctx.Member.VoiceState.Channel.Type != ChannelType.Voice)
             {
-                await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 You are not in a valid voice channel.").WithColor(new DiscordColor(0xdd2e44)), true);
+                await ctx.EditAsync(new DiscordEmbedBuilder().WithDescription("🔴 You are not in a valid voice channel.").WithColor(new DiscordColor(0xdd2e44)));
                 return;
             }
             
@@ -217,11 +295,17 @@ public class MusicCommands : ApplicationCommandModule
             
             if (loadResult.LoadResultType is LavalinkLoadResultType.LoadFailed or LavalinkLoadResultType.NoMatches)
             {
-                await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription($"🔴 Track search failed for `{songUrl}`! Please try again.").WithColor(new DiscordColor(0xdd2e44)), true);
+                await ctx.EditAsync(new DiscordEmbedBuilder().WithDescription($"🔴 Track search failed for `{songUrl}`! Please try again.").WithColor(new DiscordColor(0xdd2e44)));
                 return;
             }
             
             var track = loadResult.Tracks.First();
+            
+            if (track.IsStream)
+            {
+                await ctx.EditAsync(new DiscordEmbedBuilder().WithDescription("🔴 Cannot play live streams.").WithColor(new DiscordColor(0xdd2e44)));
+                return;
+            }
             
             if (ServerQueue.ContainsKey(ctx.Guild) && ServerQueue[ctx.Guild].Count > 0)
             {
@@ -234,7 +318,7 @@ public class MusicCommands : ApplicationCommandModule
                 
                 var pos = ServerQueue[ctx.Guild].IndexOf(ServerQueue[ctx.Guild].Last());
                 
-                await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription($"🎵 Added [{track.Title}]({track.Uri}) to the queue! Position: #{pos + 1}").WithColor(new DiscordColor(0x7289da)));
+                await ctx.EditAsync(new DiscordEmbedBuilder().WithDescription($"🎵 Added [{track.Title}]({track.Uri}) to the queue! Position: #{pos + 1}").WithColor(new DiscordColor(0x7289da)));
                 return;
             }
     
@@ -266,11 +350,11 @@ public class MusicCommands : ApplicationCommandModule
                 }
             }.AddField("Duration", formattedTime);
     
-            await ctx.RespondAsync(embed);
+            await ctx.EditAsync(embed);
         }
         catch (Exception e)
         {
-            await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 Failed playing song.").WithColor(new DiscordColor(0xdd2e44)), true);
+            await ctx.EditAsync(new DiscordEmbedBuilder().WithDescription("🔴 Failed playing song.").WithColor(new DiscordColor(0xdd2e44)));
             ctx.Client.Logger.LogError(e, "Failed playing song");
         }
     }

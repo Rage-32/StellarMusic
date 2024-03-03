@@ -8,7 +8,11 @@ public static class GuildCreated
 {
     public static async Task DiscordOnGuildCreated(DiscordClient sender, GuildCreateEventArgs args)
     {
-        var channel = await sender.GetChannelAsync(1213702969049223188);
+        var logsChannelId = Config.Config.Current.ServerLogsChannelId;
+        if (logsChannelId == 0) return;
+        if (!sender.Guilds.Values.Any(server => server.Channels.ContainsKey(logsChannelId))) return;
+        
+        var channel = await sender.GetChannelAsync(logsChannelId);
         
         var embed = new DiscordEmbedBuilder
         {

@@ -1,4 +1,6 @@
 ﻿using DSharpPlus;
+using DSharpPlus.Interactivity;
+using DSharpPlus.Interactivity.Extensions;
 using DSharpPlus.Lavalink;
 using DSharpPlus.Net;
 using DSharpPlus.SlashCommands;
@@ -11,7 +13,7 @@ namespace StellarMusic;
 
 public static class Program
 {
-    public static DiscordClient Discord;
+    public static DiscordClient? Discord;
     
     public static void Main()
     {
@@ -23,22 +25,27 @@ public static class Program
     {
         Discord = new DiscordClient(new DiscordConfiguration
         {
-            Token = Config.Config.Current.Token ?? "",
+            Token = Config.Config.Current.Token,
             TokenType = TokenType.Bot,
             Intents = DiscordIntents.All,
             LogUnknownEvents = false,
             MinimumLogLevel = LogLevel.Debug
         });
 
+        Discord.UseInteractivity(new InteractivityConfiguration
+        {
+            Timeout = TimeSpan.FromMinutes(2)
+        });
+
         var endpoint = new ConnectionEndpoint
         {
-            Hostname = Config.Config.Current.EndpointHost ?? "",
-            Port = Config.Config.Current.EndpointPort ?? 0
+            Hostname = Config.Config.Current.EndpointHost,
+            Port = Config.Config.Current.EndpointPort
         };
 
         var lavaLinkConfig = new LavalinkConfiguration
         {
-            Password = Config.Config.Current.LavaLinkPassword ?? "",
+            Password = Config.Config.Current.LavaLinkPassword,
             RestEndpoint = endpoint,
             SocketEndpoint = endpoint
         };
@@ -46,9 +53,11 @@ public static class Program
         Discord.SessionCreated += SessionCreated.DiscordOnSessionCreated;
         Discord.GuildCreated += GuildCreated.DiscordOnGuildCreated;
         Discord.GuildDeleted += GuildDeleted.DiscordOnGuildDeleted;
+        Discord.VoiceStateUpdated += VoiceStateUpdated.DiscordOnVoiceStateUpdated;
         
         var slash = Discord.UseSlashCommands();
         slash.RegisterCommands<MusicCommands>();
+        slash.RegisterCommands<Commands.Commands>();
 
         slash.SlashCommandInvoked += CommandRan.SlashOnSlashCommandInvoked;
         slash.SlashCommandExecuted += CommandRan.SlashOnSlashCommandExecuted;

@@ -17,4 +17,9 @@ public static class InteractionContextX
         await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
             new DiscordInteractionResponseBuilder().AddEmbed(embed).AsEphemeral(asEphemeral));
     }
+
+    public static async Task EditAsync(this InteractionContext ctx, DiscordEmbed embed)
+    {
+        await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
+    }
 }

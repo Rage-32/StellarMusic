@@ -10,17 +10,30 @@ public static class CommandRan
 {
     private static Stopwatch commandExecutionTimer;
 
-    public static async Task SlashOnSlashCommandInvoked(SlashCommandsExtension sender, SlashCommandInvokedEventArgs args)
+    public static Task SlashOnSlashCommandInvoked(SlashCommandsExtension sender, SlashCommandInvokedEventArgs args)
     {
+        var logsChannelId = Config.Config.Current.CommandsLogsChannelId;
+        if (logsChannelId == 0) return Task.CompletedTask;
+        if (!sender.Client.Guilds.Values.Any(server => server.Channels.ContainsKey(logsChannelId))) return Task.CompletedTask;
+        
         commandExecutionTimer = Stopwatch.StartNew();
+        return Task.CompletedTask;
     }
+
+    public static Dictionary<ulong, ulong> GuildLastCommandRanChannel { get; set; } = new(); // move this somewhere else
     
     public static async Task SlashOnSlashCommandExecuted(SlashCommandsExtension sender, SlashCommandExecutedEventArgs args)
     {
+        if (!args.Context.Channel.IsPrivate) GuildLastCommandRanChannel[args.Context.Guild.Id] = args.Context.Channel.Id;
+        
+        var logsChannelId = Config.Config.Current.CommandsLogsChannelId;
+        if (logsChannelId == 0) return;
+        if (!sender.Client.Guilds.Values.Any(server => server.Channels.ContainsKey(logsChannelId))) return;
+        
         commandExecutionTimer.Stop();
         
         var executionTime = commandExecutionTimer.Elapsed;
-        var logsChannel = await sender.Client.GetChannelAsync(1213703029384151140);
+        var logsChannel = await sender.Client.GetChannelAsync(logsChannelId);
 
         var embed = new DiscordEmbedBuilder
         {
@@ -44,8 +57,7 @@ public static class CommandRan
         embed.AddField("Channel", $"`#{args.Context.Channel.Name}`");
         embed.AddField("Execution Time", $"`{executionTime.TotalSeconds:F2}s`");
         embed.AddField("Command", $"`{args.Context.QualifiedName}`");
-
-        if (args.Context.User.Id is not 817443146320576603)
-            await logsChannel.SendMessageAsync(embed);
+        
+        await logsChannel.SendMessageAsync(embed);
     }
 }
