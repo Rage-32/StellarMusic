@@ -22,4 +22,9 @@ public static class InteractionContextX
     {
         await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
     }
+    
+    public static async Task EditAsync(this InteractionContext ctx, DiscordMessageBuilder builder)
+    {
+        await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbeds(builder.Embeds).AddComponents(builder.Components));
+    }
 }

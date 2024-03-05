@@ -32,8 +32,36 @@ public class Commands : ApplicationCommandModule
             test += $"{command.Name}\n\u2003 ▶ {command.Description}\n";
         }
         
-        embed.AddField($"Commands", $"{test}");
+        embed.AddField("Commands", $"{test}");
 
         await ctx.EditAsync(embed);
+    }
+
+    [SlashCommand("info", "Information about Stellar Music.")]
+    public async Task InfoCommand(InteractionContext ctx)
+    {
+        await ctx.DeferAsync();
+    
+        var commands = await ctx.Client.GetGlobalApplicationCommandsAsync();
+        var commandsCount = commands.Count;
+        var serversCount = ctx.Client.Guilds.Count;
+    
+        var embed = new DiscordEmbedBuilder().WithColor(new DiscordColor(0x916c94));
+        embed.AddField("Source", "[GitHub](https://github.com/Rage-32)", true);
+        embed.AddField("Framework", ".NET 8.0", true);
+        embed.AddField("Library", "[DSharpPlus](https://github.com/DSharpPlus/DSharpPlus)", true);
+        embed.AddField("Commands", $"{commandsCount}", true);
+        embed.AddField("Servers", $"{serversCount}", true);
+        embed.AddField("Users", $"{ctx.Client.Guilds.Sum(s => s.Value.Members.Count)}", true);
+        
+        var inviteButton = new DiscordLinkButtonComponent("https://discord.com/api/oauth2/authorize?client_id=1115175295994040350&permissions=15747072&scope=bot%20applications.commands", "Invite", false, new DiscordComponentEmoji("📜")); // TODO: CHANGE THIS
+        var supportButton = new DiscordLinkButtonComponent("https://discord.com/invite/aZEGSPKQMk", "Support Server", false, new DiscordComponentEmoji("🌎"));
+        var websiteButton = new DiscordLinkButtonComponent("https://stellarbot.dev", "Website", false, new DiscordComponentEmoji("🔗"));
+
+        var messageBuilder = new DiscordMessageBuilder()
+            .AddEmbed(embed)
+            .AddComponents(inviteButton, supportButton, websiteButton);
+
+        await ctx.EditAsync(messageBuilder);
     }
 }
