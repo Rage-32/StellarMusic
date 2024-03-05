@@ -6,6 +6,7 @@ using DSharpPlus.Interactivity.Extensions;
 using DSharpPlus.Lavalink;
 using DSharpPlus.SlashCommands;
 using Microsoft.Extensions.Logging;
+using StellarMusic.Attributes;
 using StellarMusic.Extensions;
 using StellarMusic.Models;
 
@@ -16,6 +17,7 @@ public class MusicCommands : ApplicationCommandModule
     public static Dictionary<DiscordGuild, List<Track>> ServerQueue = new(); // move this somewhere else
 
     [SlashCommandGroup("bassboost", "Bassboost commands")]
+    [RequireConnection]
     public class BassBoostSubCommands : ApplicationCommandModule
     {
         [SlashCommand("set", "Set bass boost")]
@@ -58,6 +60,7 @@ public class MusicCommands : ApplicationCommandModule
     }
 
     [SlashCommandGroup("queue", "Queue commands")]
+    [RequireConnection]
     public class QueueSubCommands : ApplicationCommandModule
     {
         [SlashCommand("get", "Get the current queue")]
@@ -65,8 +68,6 @@ public class MusicCommands : ApplicationCommandModule
         {
             try
             {
-                await ctx.CheckLinkValid(ctx.Client);
-        
                 if (!ServerQueue.ContainsKey(ctx.Guild) || ServerQueue[ctx.Guild].Count < 1)
                 {
                     await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 There are no tracks in the queue.").WithColor(new DiscordColor(0xdd2e44)));
@@ -108,8 +109,6 @@ public class MusicCommands : ApplicationCommandModule
         [SlashCommand("clear", "Clear the current queue.")]
         public async Task QueueClearCommand(InteractionContext ctx)
         {
-            await ctx.CheckLinkValid(ctx.Client);
-            
             if (!ServerQueue.ContainsKey(ctx.Guild))
             {
                 await ctx.RespondAsync(new DiscordEmbedBuilder().WithDescription("🔴 There are no tracks in the queue.").WithColor(new DiscordColor(0xdd2e44)));
@@ -130,10 +129,9 @@ public class MusicCommands : ApplicationCommandModule
     }
 
     [SlashCommand("repeat", "Repeat the current song")]
+    [RequireConnection]
     public async Task RepeatCommand(InteractionContext ctx)
     {
-        await ctx.CheckLinkValid(ctx.Client);
-
         if (ServerQueue.ContainsKey(ctx.Guild) && ServerQueue[ctx.Guild].Count > 0)
         {
             ServerQueue[ctx.Guild].First().Repeat = !ServerQueue[ctx.Guild].First().Repeat;
@@ -146,10 +144,9 @@ public class MusicCommands : ApplicationCommandModule
     }
     
     [SlashCommand("stop", "Stop the player, clear the queue, and disconnect from the voice channel.")]
+    [RequireConnection]
     public async Task StopCommand(InteractionContext ctx)
     {
-        await ctx.CheckLinkValid(ctx.Client);
-        
         var lava = ctx.Client.GetLavalink();
         var node = lava.ConnectedNodes.Values.First();
         var conn = node.GetGuildConnection(ctx.Member.VoiceState.Channel.Guild);
@@ -162,9 +159,9 @@ public class MusicCommands : ApplicationCommandModule
     }
 
     [SlashCommand("skip", "Skip the current song and go to the next")]
+    [RequireConnection]
     public async Task SkipCommand(InteractionContext ctx)
     {
-        await ctx.CheckLinkValid(ctx.Client);
         await ctx.DeferAsync();
         
         var lava = ctx.Client.GetLavalink();
@@ -190,15 +187,14 @@ public class MusicCommands : ApplicationCommandModule
     }
 
     [SlashCommand("current", "Get the current song")]
+    [RequireConnection]
     public async Task CurrentCommand(InteractionContext ctx)
     {
         try
         {
-            await ctx.CheckLinkValid(ctx.Client);
-        
             var lava = ctx.Client.GetLavalink();
             var node = lava.ConnectedNodes.Values.First();
-            var conn = node.GetGuildConnection(ctx.Member.VoiceState.Channel.Guild);
+            var conn = node.GetGuildConnection(ctx.Guild);
 
             var track = conn.CurrentState.CurrentTrack;
             await ctx.RespondAsync(new DiscordEmbedBuilder()
@@ -214,10 +210,9 @@ public class MusicCommands : ApplicationCommandModule
     }
     
     [SlashCommand("volume", "Set the volumne")]
+    [RequireConnection]
     public async Task VolumeCommand(InteractionContext ctx, [Option("volume", "The volume level to set")] string volumeString)
     {
-        await ctx.CheckLinkValid(ctx.Client);
-        
         var lava = ctx.Client.GetLavalink();
         var node = lava.ConnectedNodes.Values.First();
         var conn = node.GetGuildConnection(ctx.Member.VoiceState.Channel.Guild);
@@ -242,10 +237,9 @@ public class MusicCommands : ApplicationCommandModule
     }
     
     [SlashCommand("pause", "Pause the current song on the player.")]
+    [RequireConnection]
     public async Task PauseCommand(InteractionContext ctx)
     {
-        await ctx.CheckLinkValid(ctx.Client);
-        
         var lava = ctx.Client.GetLavalink();
         var node = lava.ConnectedNodes.Values.First();
         var conn = node.GetGuildConnection(ctx.Member.VoiceState.Channel.Guild);
@@ -255,10 +249,9 @@ public class MusicCommands : ApplicationCommandModule
     }
     
     [SlashCommand("resume", "Resume the current song on the player.")]
+    [RequireConnection]
     public async Task ResumeCommand(InteractionContext ctx)
     {
-        await ctx.CheckLinkValid(ctx.Client);
-        
         var lava = ctx.Client.GetLavalink();
         var node = lava.ConnectedNodes.Values.First();
         var conn = node.GetGuildConnection(ctx.Member.VoiceState.Channel.Guild);
@@ -275,17 +268,17 @@ public class MusicCommands : ApplicationCommandModule
         try
         {
             var lava = ctx.Client.GetLavalink();
-            var node = lava.ConnectedNodes.Values.First();
+            var node = lava.ConnectedNodes.Values.First();  
             
             if (ctx.Member.VoiceState is null || ctx.Member.VoiceState.Channel is null || ctx.Member.VoiceState.Channel.Type != ChannelType.Voice)
             {
-                await ctx.EditAsync(new DiscordEmbedBuilder().WithDescription("🔴 You are not in a valid voice channel.").WithColor(new DiscordColor(0xdd2e44)));
+                await ctx.EditAsync(new DiscordEmbedBuilder().WithDescription("🔴 You are not connected to a voice channel.").WithColor(new DiscordColor(0xdd2e44)));
                 return;
             }
             
             var conn = node.GetGuildConnection(ctx.Member.VoiceState.Guild);
     
-            if (conn == null!)
+            if (conn == null)
             {
                 await node.ConnectAsync(ctx.Member.VoiceState.Channel);
                 conn = node.GetGuildConnection(ctx.Member.VoiceState.Guild);
@@ -323,6 +316,7 @@ public class MusicCommands : ApplicationCommandModule
             }
     
             await conn.PlayAsync(track);
+            
             ServerQueue.Add(ctx.Guild, [
                 new Track
                 {
